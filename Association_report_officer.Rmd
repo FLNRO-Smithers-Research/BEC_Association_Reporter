@@ -7,12 +7,10 @@ output: word_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# install.packages("officer")
-#install.packages("flextable")
-#devtools::install_github("davidgohel/flextable")
-require(officer)
-require(dplyr)
-require(flextable)
+library(magrittr)
+library(xlsx)
+library(officer)
+library(dplyr)
 ```
 
 ## R Markdown using officer package to create standardize report of associations in Word
@@ -20,204 +18,146 @@ require(flextable)
 The current code is copied from https://sciprincess.wordpress.com/2020/02/17/creating-ms-word-reports-using-the-officer-package/
 as an example to follow for this work
 
-```{r cars}
-library(officer)
-library(dplyr)
-# library(flextable) # make this work
-```
-
-Specs
-
-```{r data frame for specs}
-values <- c("_01", "1", "2", "2a", "2b", "2c", "3a", "3b", "3c", as.character(4:16))
-descriptions <- c(
-  "blue_header_container",
-  "BGC",
-  "all_english_names",
-  rep("name", 3),
-  rep("latin_name", 3),
-  "header_02",
-  "general_description",
-  "small_logo_forest",
-  "BGC_image",
-  "header_02",
-  "characteristic_vegetation",
-  "header_02",
-  "wetland_edatopic_grid",
-  "header_02",
-  "comments",
-  "style_line",
-  "page_number",
-  "journal"
-)
-data_types <- c(
-  "style",
-  rep("string", 10),
-  rep("image", 2),
-  "string",
-  "data_frame",
-  "string",
-  "possibly_ggplot",
-  rep("string", 2),
-  "style",
-  "integer",
-  "string"
-)
-is_style_feature_only_vector <- c(
-  TRUE,
-  rep(FALSE, 18),
-  TRUE,
-  rep(FALSE, 2)
-)
-my_specs <- data.frame(value = values, description = descriptions, data_type = data_types, is_style_feature_only = is_style_feature_only_vector)
-
-
-```
-
 ```{r set up document}
+BEC_master_19 <- read.xlsx(file.path("./inputs/VegetationSummary.xlsx"), 4, stringsAsFactors = FALSE)
+
+formatted_BEC_m_19 <- BEC_master_19[c(-1:-4),]
+names(formatted_BEC_m_19) <- c("Layer", "Species", "Common Name", "Order", "Wb01 ASSOC Picemar-Gaulhis-Sphagnu", "del")
+formatted_BEC_m_19$Order = NULL
+formatted_BEC_m_19$del = NULL
+
+formatted_BEC_m_19 <- formatted_BEC_m_19 %>% 
+  mutate(
+    Constancy = sub(" - .*", "", `Wb01 ASSOC Picemar-Gaulhis-Sphagnu`),
+    Percent_Coverage = sub(".* - ", "", `Wb01 ASSOC Picemar-Gaulhis-Sphagnu`)
+  ) %>% 
+  filter(
+    Constancy > 0.55
+  )
+
+formatted_BEC_m_19 <- formatted_BEC_m_19[, c("Layer", "Species", "Common Name", "Constancy", "Percent_Coverage", "Wb01 ASSOC Picemar-Gaulhis-Sphagnu")]
+formatted_BEC_m_19 <- formatted_BEC_m_19[order(formatted_BEC_m_19$Species),]
+
+generate_table_layer <- function(veg_label, reference_table = formatted_BEC_m_19, ref_filter) {
+  
+  veg_layer <- reference_table %>% 
+    filter(Layer == ref_filter)
+  
+  if(nrow(veg_layer) > 0) {
+    veg_info <- as.list(paste0(veg_layer$Species, " (", veg_layer$Percent_Coverage, ")"))
+    x <- c(veg_label, lapply(veg_info, function(i){
+      rbind(data.frame(), i, stringsAsFactors = FALSE)
+    }))
+  }
+}
+
+tree <- generate_table_layer(veg_label = "Tree Layer", ref_filter = "A")
+shrub <- generate_table_layer(veg_label = "Shrub Layer", ref_filter = "B")
+herb <- generate_table_layer(veg_label = "Herb Layer", ref_filter = "C")
+moss <- generate_table_layer(veg_label = "Moss Layer", ref_filter = "D")
+
+xa <- as.list(c(tree, shrub, herb, moss))
+
+df <- as.data.frame(unlist(xa), stringsAsFactors = FALSE)
+colnames(df) <- "Characteristic Vegetation"
+
+```
+
+```{r}
+
+my_edited_doc <- read_docx("./reports/docx/in/first_example_with_edits.docx") 
+
+x <- docx_summary(my_edited_doc)
+
+search_string <- "General Description"
+text_part <- x$text
+index <- which(search_string == text_part)[[1]]
+return_value <- text_part[[index + 1]]
+
 my_doc <- read_docx()
-styles_info(my_doc)
 
-src_example <- tempfile(fileext = ".png")
-png(filename = src_example, width = 5, height = 6, units = 'in', res = 300)
-barplot(1:10, col = 1:10)
-# dev.off()
-
+THEME_COLOUR <- "#49bfee"
+text_style_blue <- fp_text(color = THEME_COLOUR, bold = TRUE)
 ID <- "Wb01"
 SPECIES <- "Black spruce - Creeping-snowberry - Peat-moss"
 SPECIES_LATIN <- "Picea mariana - Gaultheria hispidula - Sphagnum"
-HEADER_01 <- "General Description"
-HEADER_02 <- "Characteristic Vegetation"
-HEADER_03 <- "Wetland Edatopic Grid"
+HEADER_01 <- fpar(ftext(text = "General Description", text_style_blue))
+HEADER_02 <- fpar(ftext(text = "Characteristic Vegetation", text_style_blue))
+HEADER_03 <- fpar(ftext(text = "Wetland Edatopic Grid", text_style_blue))
+HEADER_04 <- fpar(ftext(text = "Comments", text_style_blue))
 GENERAL_DESCRIPTION_TEXT <- "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec ut diam nec magna lacinia placerat. In condimentum metus in ex semper elementum. Suspendisse auctor, lacus sit amet placerat tempor, ex enim aliquet dui, quis dignissim nibh eros ac magna. Sed vulputate ornare est vitae pulvinar. Aliquam efficitur lectus augue, vel lobortis nibh suscipit ac. Nulla in placerat nunc. Duis nec metus eu velit efficitur maximus vitae lacinia quam."
-THEME_COLOUR <- "#49bfee"
+COMMENTS_TEXT <- "Aenean venenatis varius elit et fermentum vivamus vehicula. " %>%
+  rep(5) %>% paste(collapse = "")
+
+if(length(return_value)) {
+  GENERAL_DESCRIPTION_TEXT <- return_value
+}
 
 align_right <- fp_par(text.align = "right", padding = 0)
 background_shading <- fp_par(padding = 0, shading.color = THEME_COLOUR)
 text_style_normal <- fp_text(font.size = 12)
 text_style_white <- fp_text(color = "white")
-text_style_blue <- fp_text(color = THEME_COLOUR, bold = TRUE)
 
 title_at_top <- block_list(
   fpar(ftext(ID, text_style_normal), " ",
        ftext(SPECIES, text_style_white), fp_p = background_shading))
 my_doc <- body_add(my_doc, title_at_top)
 
-general_header <- fpar(ftext(HEADER_01, text_style_blue))
-
 my_doc <- my_doc %>% 
-  body_add_par("", style = "Normal") %>% 
   body_add_par(SPECIES_LATIN) %>% 
   body_add_par("", style = "Normal") %>% 
   body_add_par("", style = "Normal") %>% 
-  body_add(general_header) %>%
+  body_add(HEADER_01) %>%
   body_add_par(GENERAL_DESCRIPTION_TEXT) %>%
-  slip_in_img(src = "./histogram.png", width = 1, height = 1, pos = "before") %>% # height and width are in inches
-  slip_in_img(src = "./histogram.png", width = 1, height = 1, pos = "after")
+  slip_in_img(src = "./histogram.png", width = 1, height = 1, pos = "before") %>% 
+  body_add_par("", style = "Normal") %>% 
+  body_add_table(df, style = "table_template") %>% 
+  body_add_par("", style = "Normal") %>%
+  body_add_par("", style = "Normal") %>%
+  body_add(HEADER_03) %>%
+  body_add_img(src = "./histogram.png", width = 1, height = 1) %>% 
+  body_add_par("", style = "Normal") %>%
+  body_add(HEADER_04) %>% 
+  body_add_par(COMMENTS_TEXT)
 
-
-
-
-# maybe I can do something smart where I get the height of the image, and do a kind of absolute position or text align that wraps around that height, so the image is more seamless with the GENERAL_DESCRIPTION_TEXT
-
-
-body_add_fpar(my_doc, fpar( ftext(HEADER_03, prop = text_style_normal), fp_p = align_right ))
-
-remove("/reports/docx/first_example.docx")
-
-
-
-print(my_doc, target = "./reports/docx/first_example.docx")
-
+print(my_doc, target = "reports/docx/out/first_example.docx")
 
 ```
 
-## Including Plots
+The following script generates multiple columns for text blobs. Thus far, have not found a solution to have an image or data frame as one column.
+```{r multiple columns example}
 
-You can also embed plots, for example:
+str1 <- "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " %>%
+  rep(5) %>% paste(collapse = "")
+str2 <- "Aenean venenatis varius elit et fermentum vivamus vehicula. " %>%
+  rep(5) %>% paste(collapse = "")
 
-```{r pressure, echo=FALSE}
-# create new word document
-new.word.doc=function(){
-  my.doc=read_docx()
-  return(my.doc)
-}
+my_doc <- read_docx()  %>%
+  
+  body_end_section_continuous() %>%
+  body_add(HEADER_02) %>% 
+  body_add_par(value = str2) %>%
+  body_add(HEADER_03) %>% 
+  slip_in_column_break(pos = "before") %>%
+  body_add_par(value = str1) %>%
+  body_end_section_columns(widths = c(2,2), sep = TRUE, space = 1) %>%
+  
+  body_add_break() %>%
+  
+  
+  body_add_par(value = "Columns", style = "heading 1") %>%
+  body_end_section_continuous() %>%
+  body_add_par(value = paste0("AA", str1), style = "centered") %>%
+  body_add_par(value = paste0("BB", str2), style = "centered") %>%
+  slip_in_column_break() %>%
+  body_add_par(value = str1, style = "centered") %>%
+  body_end_section_columns(widths = c(2,2), sep = TRUE, space = 1) %>%
+  
+  body_add_par(value = paste0("A", str1), style = "Normal") %>%
+  body_add_par(value = paste0("B", str2), style = "Normal") %>%
+  slip_in_column_break() %>%
+  body_end_section_columns_landscape(widths = c(3,3), sep = TRUE, space = 1)
 
+print(my_doc, target = "./reports/docx/examples/columns.docx")
 
-# import Word document in a data.frame
-# The function docx_summary() reads and imports content of a Word document into a data.frame. The function handles paragraphs, tables and section breaks.
-
-
-# add an empty line
-add.empty.line=function(doc){
-  body_add_par(doc, " ")
-  return("empty line added")
-}
-
-#add page break
-add.page.break=function(doc){
-  body_add_break(doc, pos="after")
-  return("page break added")
-}
-
-# start landscape
-start.landscape=function(doc){
-  doc=body_end_section_continuous(doc)
-  return("landscape orientation started")
-}
-
-# end landscape
-end.landscape=function(doc){
-  doc=body_end_section_landscape(doc)
-  return("landscape orientation ended")
-}
-
-# add a title
-add.title=function(doc, my.title){
-  my.prop=fp_text(font.size = 14, bold = TRUE, font.family = "Times")
-  the.title=fpar(ftext(my.title, prop=my.prop))
-  body_add_fpar(doc, the.title)
-  body_add_par(doc, " ")
-  return("title added")
-}
-# add an image, such as a jpg or png file
-add.image=function(doc, image, h=5, w=5){
-  body_add_img(doc, src=image,
-               height=h, width=w,
-               style="centered")
-  return("image added")
-}
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-```{r generate document}
-# create an histogram and save it as a png file:
-png(filename="histogram.png", width = 6, height = 6, units = 'in', res = 300)
-hist(mtcars$wt)
-dev.off()
-
-# create a data frame that will become a table in my report
-wide.table=mtcars[1:6, ]
-wide.table$car=rownames(wide.table)
-wide.table=wide.table[, c(12, 1:11)]
-narrow.table=wide.table[, 1:4]
-
-# create a new document object
-doc=new.word.doc()
-
-# add the report title and an empty line
-add.title(doc, "My report")
-add.empty.line(doc)
-
-add.page.break(doc)
-
-# add the histogram with an apropriate title
-add.title(doc, "Histogram - portrait")
-add.image(doc, "histogram.png", h=3, w=3)
-
-
-
-# generate the Word document using the print function
-print(doc, target="My report.docx")
 ```
