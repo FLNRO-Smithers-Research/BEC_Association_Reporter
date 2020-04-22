@@ -7,8 +7,12 @@ output: word_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-install.packages("officer")
+# install.packages("officer")
+#install.packages("flextable")
+#devtools::install_github("davidgohel/flextable")
 require(officer)
+require(dplyr)
+require(flextable)
 ```
 
 ## R Markdown using officer package to create standardize report of associations in Word
@@ -18,7 +22,114 @@ as an example to follow for this work
 
 ```{r cars}
 library(officer)
-library(flextable)
+library(dplyr)
+# library(flextable) # make this work
+```
+
+Specs
+
+```{r data frame for specs}
+values <- c("_01", "1", "2", "2a", "2b", "2c", "3a", "3b", "3c", as.character(4:16))
+descriptions <- c(
+  "blue_header_container",
+  "BGC",
+  "all_english_names",
+  rep("name", 3),
+  rep("latin_name", 3),
+  "header_02",
+  "general_description",
+  "small_logo_forest",
+  "BGC_image",
+  "header_02",
+  "characteristic_vegetation",
+  "header_02",
+  "wetland_edatopic_grid",
+  "header_02",
+  "comments",
+  "style_line",
+  "page_number",
+  "journal"
+)
+data_types <- c(
+  "style",
+  rep("string", 10),
+  rep("image", 2),
+  "string",
+  "data_frame",
+  "string",
+  "possibly_ggplot",
+  rep("string", 2),
+  "style",
+  "integer",
+  "string"
+)
+is_style_feature_only_vector <- c(
+  TRUE,
+  rep(FALSE, 18),
+  TRUE,
+  rep(FALSE, 2)
+)
+my_specs <- data.frame(value = values, description = descriptions, data_type = data_types, is_style_feature_only = is_style_feature_only_vector)
+
+
+```
+
+```{r set up document}
+my_doc <- read_docx()
+styles_info(my_doc)
+
+src_example <- tempfile(fileext = ".png")
+png(filename = src_example, width = 5, height = 6, units = 'in', res = 300)
+barplot(1:10, col = 1:10)
+# dev.off()
+
+ID <- "Wb01"
+SPECIES <- "Black spruce - Creeping-snowberry - Peat-moss"
+SPECIES_LATIN <- "Picea mariana - Gaultheria hispidula - Sphagnum"
+HEADER_01 <- "General Description"
+HEADER_02 <- "Characteristic Vegetation"
+HEADER_03 <- "Wetland Edatopic Grid"
+GENERAL_DESCRIPTION_TEXT <- "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec ut diam nec magna lacinia placerat. In condimentum metus in ex semper elementum. Suspendisse auctor, lacus sit amet placerat tempor, ex enim aliquet dui, quis dignissim nibh eros ac magna. Sed vulputate ornare est vitae pulvinar. Aliquam efficitur lectus augue, vel lobortis nibh suscipit ac. Nulla in placerat nunc. Duis nec metus eu velit efficitur maximus vitae lacinia quam."
+THEME_COLOUR <- "#49bfee"
+
+align_right <- fp_par(text.align = "right", padding = 0)
+background_shading <- fp_par(padding = 0, shading.color = THEME_COLOUR)
+text_style_normal <- fp_text(font.size = 12)
+text_style_white <- fp_text(color = "white")
+text_style_blue <- fp_text(color = THEME_COLOUR, bold = TRUE)
+
+title_at_top <- block_list(
+  fpar(ftext(ID, text_style_normal), " ",
+       ftext(SPECIES, text_style_white), fp_p = background_shading))
+my_doc <- body_add(my_doc, title_at_top)
+
+general_header <- fpar(ftext(HEADER_01, text_style_blue))
+
+my_doc <- my_doc %>% 
+  body_add_par("", style = "Normal") %>% 
+  body_add_par(SPECIES_LATIN) %>% 
+  body_add_par("", style = "Normal") %>% 
+  body_add_par("", style = "Normal") %>% 
+  body_add(general_header) %>%
+  body_add_par(GENERAL_DESCRIPTION_TEXT) %>%
+  slip_in_img(src = "./histogram.png", width = 1, height = 1, pos = "before") %>% # height and width are in inches
+  slip_in_img(src = "./histogram.png", width = 1, height = 1, pos = "after")
+
+
+
+
+# maybe I can do something smart where I get the height of the image, and do a kind of absolute position or text align that wraps around that height, so the image is more seamless with the GENERAL_DESCRIPTION_TEXT
+
+
+body_add_fpar(my_doc, fpar( ftext(HEADER_03, prop = text_style_normal), fp_p = align_right ))
+
+remove("/reports/docx/first_example.docx")
+
+
+
+print(my_doc, target = "./reports/docx/first_example.docx")
+
+
 ```
 
 ## Including Plots
@@ -31,6 +142,11 @@ new.word.doc=function(){
   my.doc=read_docx()
   return(my.doc)
 }
+
+
+# import Word document in a data.frame
+# The function docx_summary() reads and imports content of a Word document into a data.frame. The function handles paragraphs, tables and section breaks.
+
 
 # add an empty line
 add.empty.line=function(doc){
@@ -58,11 +174,11 @@ end.landscape=function(doc){
 
 # add a title
 add.title=function(doc, my.title){
-my.prop=fp_text(font.size = 14, bold = TRUE, font.family = "Times")
-the.title=fpar(ftext(my.title, prop=my.prop))
-body_add_fpar(doc, the.title)
-body_add_par(doc, " ")
-return("title added")
+  my.prop=fp_text(font.size = 14, bold = TRUE, font.family = "Times")
+  the.title=fpar(ftext(my.title, prop=my.prop))
+  body_add_fpar(doc, the.title)
+  body_add_par(doc, " ")
+  return("title added")
 }
 # add an image, such as a jpg or png file
 add.image=function(doc, image, h=5, w=5){
@@ -70,39 +186,6 @@ add.image=function(doc, image, h=5, w=5){
                height=h, width=w,
                style="centered")
   return("image added")
-}
-# add a data frame as a table
-add.table=function(doc, tbl, col.keys=NULL, col.digits=NULL){
-  # create basic flextable
-  f.table=qflextable(tbl)
-
-  # set numbers of decimals for numeric variables, if specified
-  if(!is.null(col.keys)){
-    for(j in 1:length(col.keys)){
-      f.table=colformat_num(x=f.table,
-                            col_keys=col.keys[j],
-                            digits=col.digits[j])
-    }
-  }
-  
-  # set table borders
-  f.table=border_outer(f.table, part="all",
-                       border=fp_border(color="black", width = 1))
-  f.table=border_inner_h(f.table, part="all",
-                         border=fp_border(color="black", width = 1))
-  f.table=border_inner_v(f.table, part="all",
-                         border=fp_border(color="black", width = 1))
-  
-  # set fonts
-  f.table=font(f.table,  fontname = "Times", part = "all")
-  # also set the table's header font as bold
-  f.table=bold(f.table, part = "header")
-  
-  # add the table to the document
-  flextable::body_add_flextable(doc, 
-                                value = f.table, 
-                                align = "left" )
-  return("table added")
 }
 ```
 
@@ -127,32 +210,13 @@ doc=new.word.doc()
 add.title(doc, "My report")
 add.empty.line(doc)
 
-add.title(doc, "narrow table")
-add.table(doc, narrow.table, col.keys=c("mpg", "disp"), col.digits=c(1,0))
-
 add.page.break(doc)
 
 # add the histogram with an apropriate title
 add.title(doc, "Histogram - portrait")
 add.image(doc, "histogram.png", h=3, w=3)
 
-# set the orientation to lndscape
-start.landscape(doc)
 
-add.title(doc, "narrow table - landscape")
-add.table(doc, narrow.table, col.keys=c("mpg", "disp"), col.digits=c(1,0))
-
-add.empty.line(doc)
-
-# add the wide table in landsacape page orientation
-add.title(doc, "wide table in landscape orientation")
-add.table(doc, wide.table, col.keys=c("mpg", "disp"), col.digits=c(1,0))
-
-#set the orientation back to portrait
-end.landscape(doc)
-
-add.title(doc, "narrow table")
-add.table(doc, narrow.table, col.keys=c("mpg", "disp"), col.digits=c(1,0))
 
 # generate the Word document using the print function
 print(doc, target="My report.docx")
